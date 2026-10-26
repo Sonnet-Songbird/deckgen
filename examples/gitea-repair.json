@@ -1,0 +1,209 @@
+{
+  "slides": [
+    {
+      "layout": "title",
+      "title": "Gitea 리포가 깨졌을 때",
+      "subtitle": "따라하기 조치 가이드\n서버 PowerShell에서 위에서 아래로 순서대로 실행하세요"
+    },
+    {
+      "layout": "intro_cards",
+      "title": "시작하기 전에 3가지",
+      "cards": [
+        { "text": "서버에 접속해 PowerShell을\n관리자 권한으로 엽니다" },
+        { "text": "코드 안의 빨간 글씨는\n내 환경에 맞게 바꿉니다" },
+        { "text": "각 단계의 \"성공\"이 나오면 거기서 끝,\n\"실패\"면 다음 단계로 갑니다" }
+      ],
+      "footnotes": [
+        { "text": "빨간 글씨 예시   <소유자>/<리포>  를  my-org/my-repo  처럼 바꿉니다 (소문자)", "tone": "normal" },
+        { "text": "git 명령은 진행 상황을 빨간 글씨로 보여 줄 수 있습니다. \"fatal\"이나 \"error\"라는 말이 없으면 정상입니다.", "tone": "normal" },
+        { "text": "PowerShell 창을 닫으면 $R 이 사라집니다. 창을 다시 열었다면 STEP 2의 첫 줄($R = ...)을 먼저 다시 입력하세요.", "tone": "warn" }
+      ]
+    },
+    {
+      "layout": "flow",
+      "title": "전체 순서",
+      "steps": [
+        { "label": "확인" },
+        { "label": "재시작" },
+        { "label": "백업" },
+        { "label": "정리" },
+        { "label": "사본 교체" },
+        { "label": "재생성" }
+      ],
+      "tag": "STEP",
+      "start": 0,
+      "highlight_last": true,
+      "captions": [
+        { "text": "앞 단계에서 성공하면 거기서 끝냅니다.", "tone": "normal" },
+        { "text": "STEP 5는 리포를 지우고 다시 만드는 단계라서 관리자와 함께 진행합니다.", "tone": "warn" }
+      ]
+    },
+    {
+      "layout": "step",
+      "badge": "0",
+      "title": "STEP 0  정말 깨졌는지 확인",
+      "lead": "매번 새 폴더에 새로 내려받아 봅니다. 그다음 웹 브라우저로 리포 첫 화면도 열어 봅니다.",
+      "code": [
+        "git clone http://<Gitea주소>/<소유자>/<리포>.git \"C:\\test-clone-$(Get-Date -Format HHmmss)\""
+      ],
+      "ok": "클론이 오류 없이 끝나고 웹 첫 화면도 열리면 정상입니다. 여기서 끝.",
+      "ng": "\"bad tree object\"가 나오거나 웹 첫 화면이 500이면 STEP 1로."
+    },
+    {
+      "layout": "step",
+      "badge": "1",
+      "title": "STEP 1  Gitea 서비스 재시작",
+      "lead": "서비스 이름을 찾고 다시 시작합니다. 다시 시작한 뒤 STEP 0을 한 번 더 합니다.",
+      "code": [
+        "Get-Service *gitea*",
+        "Restart-Service <서비스이름>"
+      ],
+      "ok": "STEP 0의 새 클론이 오류 없이 끝나고 웹의 리포 첫 화면이 열리면 끝.",
+      "ng": "같은 오류가 나오면 STEP 2로."
+    },
+    {
+      "layout": "step",
+      "badge": "2",
+      "title": "STEP 2  서비스 멈추고 백업",
+      "lead": "이 단계가 끝나기 전에는 아무 파일도 지우지 않습니다. 백업은 다른 드라이브(E:는 예시)에 합니다.",
+      "code": [
+        "$R = '<Gitea설치폴더>\\data\\gitea-repositories\\<소유자>\\<리포>.git'",
+        "Stop-Service <서비스이름>",
+        "Get-Process -Name 'git','git-*' -ErrorAction SilentlyContinue | Stop-Process -Force",
+        "New-Item -ItemType Directory E:\\backup -Force | Out-Null",
+        "Copy-Item $R 'E:\\backup\\repo-backup' -Recurse"
+      ],
+      "ok": "오류 없이 끝나고 E:\\backup\\repo-backup 폴더가 생기면 STEP 3으로.",
+      "ng": "\"Access is denied\"가 나오면 멈추세요. 백신·백업 프로그램이 폴더를 쓰는 중이니 관리자에게 알립니다."
+    },
+    {
+      "layout": "step",
+      "badge": "3",
+      "title": "STEP 3-1  쓸모없는 파일 지우기",
+      "lead": "짝이 없는 인덱스 파일과 다시 만들어지는 보조 파일만 지웁니다. 서비스는 멈춘 상태입니다.",
+      "code": [
+        "cd \"$R\\objects\"",
+        "Get-ChildItem pack\\*.idx |",
+        "  Where-Object { -not (Test-Path ($_.FullName -replace '\\.idx$','.pack')) } |",
+        "  Remove-Item -Verbose",
+        "Remove-Item pack\\multi-pack-index, info\\packs -ErrorAction SilentlyContinue",
+        "Remove-Item info\\commit-graph* -Recurse -ErrorAction SilentlyContinue"
+      ],
+      "ok": "오류 없이 끝나면 됩니다. 지울 파일이 하나도 안 나와도 정상입니다. 3-2로.",
+      "ng": "빨간 오류가 나오면 멈추고 관리자에게 알립니다."
+    },
+    {
+      "layout": "step",
+      "badge": "3",
+      "title": "STEP 3-2  다시 묶고 검사하고 시작",
+      "lead": "파일을 다시 묶고 검사한 뒤 서비스를 켭니다. 켠 다음 STEP 0을 한 번 더 합니다.",
+      "code": [
+        "cd C:\\",
+        "git -c safe.directory='*' -C $R -c gc.auto=0 repack -A -d",
+        "git -c safe.directory='*' -C $R fsck --full",
+        "Start-Service <서비스이름>"
+      ],
+      "ok": "검사 결과에 \"missing\"과 \"error\"가 없고, STEP 0의 새 클론이 성공하면 끝.",
+      "ng": "\"missing\"이나 \"error\"가 보이면 STEP 4로 갑니다. 서비스는 켜진 상태로 둬도 됩니다."
+    },
+    {
+      "layout": "checklist",
+      "title": "고쳐졌는지 확인하는 5가지",
+      "items": [
+        "빈 폴더에서 새로 클론이 성공한다",
+        "웹에서 리포 첫 화면이 열린다",
+        "웹에서 파일 내용(원문) 화면이 열린다",
+        "웹에서 커밋 이력 화면이 열린다",
+        "배포 파이프라인 빌드가 1회 성공한다"
+      ],
+      "note": "이미 받아 둔 폴더에서 pull이 되는 것은 확인이 아닙니다. 반드시 새 폴더에서 클론하세요."
+    },
+    {
+      "layout": "step",
+      "badge": "4",
+      "title": "STEP 4-1  정상 사본 준비",
+      "lead": "정상 사본이 있어야 교체할 수 있습니다. 미리 만들어 둔 미러가 있으면 그것을 씁니다.",
+      "code": [
+        "git clone --mirror http://<Gitea주소>/<소유자>/<리포>.git C:\\recover\\repo.git",
+        "git -c safe.directory='*' -C C:\\recover\\repo.git fsck --full"
+      ],
+      "ok": "클론이 끝나고 검사에 \"missing\"과 \"error\"가 없으면 4-2로.",
+      "ng": "서버에서 클론이 거부되면 멈추세요. 미리 보관한 미러 사본이 없으면 관리자에게 알립니다."
+    },
+    {
+      "layout": "step",
+      "badge": "4",
+      "title": "STEP 4-2  손상 폴더를 사본으로 교체",
+      "lead": "서비스를 멈추고 손상 폴더는 이름만 바꿔 남겨 둡니다. 지우지 않습니다.",
+      "code": [
+        "cd C:\\",
+        "Stop-Service <서비스이름>",
+        "Move-Item $R \"$R.broken\"",
+        "Copy-Item C:\\recover\\repo.git $R -Recurse",
+        "git -c safe.directory='*' -C $R config --remove-section remote.origin",
+        "Start-Service <서비스이름>"
+      ],
+      "extra": "\"no such section\" 오류가 나오면 무시해도 됩니다. 다음 장에서 훅을 다시 동기화합니다.",
+      "ok": "서비스가 시작되면 다음 장으로.",
+      "ng": "\"Access is denied\"가 나오면 멈추고 관리자에게 알립니다."
+    },
+    {
+      "layout": "procedure",
+      "badge": "4",
+      "title": "STEP 4-3  훅 다시 동기화하고 확인",
+      "lead": "Gitea 웹 관리자 화면에서 한 번만 누릅니다.",
+      "steps": [
+        "관리자 계정으로 Gitea 웹에 로그인합니다",
+        "사이트 관리 > 대시보드로 이동합니다",
+        "\"모든 저장소의 pre-receive, update, post-receive 훅 다시 동기화\" 옆의 실행 버튼을 누릅니다"
+      ],
+      "ok": "STEP 0의 새 클론이 성공하고 웹 첫 화면이 열리면 끝.",
+      "ng": "그래도 안 되면 STEP 5입니다. 이 단계는 관리자와 함께 진행하세요."
+    },
+    {
+      "layout": "numbered_list",
+      "badge": "5",
+      "tone": "warn",
+      "title": "STEP 5  삭제 후 재생성 (관리자와 함께)",
+      "warning": "PR 기록이 사라집니다. 팀에 알린 뒤 진행하세요.",
+      "items": [
+        "리포 설정 저장: 웹훅, 협업자·권한, 보호 규칙, PR 목록",
+        "정상 미러 사본 확인(STEP 4-1과 같은 검사)",
+        "이름 변경으로 보존(안 되면 삭제)",
+        "같은 이름, 같은 공개 설정으로 새 리포 생성",
+        "미러에서 브랜치·태그 푸시 (웹훅 복원 전에)",
+        "웹훅, 협업자, 보호 규칙 순서로 복원",
+        "최신 커밋을 가진 PC에서 main·development 푸시, 빌드 확인"
+      ]
+    },
+    {
+      "layout": "prohibitions",
+      "title": "하지 말 것",
+      "items": [
+        "서비스가 켜진 채로 리포 폴더의 파일을 지우거나 고치지 않는다",
+        "백업이 끝나기 전에 STEP 3 이후를 하지 않는다",
+        "백업을 같은 드라이브에 두지 않는다",
+        ".pack 파일을 직접 지우지 않는다",
+        "다른 프로그램이 폴더를 쓰는 중이면(Access is denied) repack을 반복하지 않는다",
+        "프로세스 종료에 'git*' 이름을 쓰지 않는다 (gitea까지 종료된다)",
+        "오류가 나면 다음 단계로 넘어가지 말고 멈춘다",
+        "기존 폴더의 pull 성공을 \"고쳐졌다\"고 판단하지 않는다"
+      ]
+    },
+    {
+      "layout": "closing",
+      "title": "막히면 여기서 멈추고 이것을 전달하세요",
+      "items": [
+        "어느 STEP에서 멈췄는지",
+        "화면의 오류 메시지 전체 (캡처)",
+        "파일 목록 출력",
+        "검사(fsck) 결과 앞 20줄",
+        "백업 폴더 위치"
+      ],
+      "code": [
+        "Get-ChildItem \"$R\\objects\\pack\" | Sort-Object Name | Select-Object Name,Length,LastWriteTime",
+        "git -c safe.directory='*' -C $R fsck --full 2>&1 | Select-Object -First 20"
+      ]
+    }
+  ]
+}
