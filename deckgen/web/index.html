@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>deckgen</title>
+<style>
+  :root {
+    --bg: #f5f8f9; --panel: #ffffff; --line: #d7e2e6; --ink: #1b2a33; --muted: #5c6b73;
+    --accent: #0f7b8a; --accent-ink: #ffffff; --warn: #d9580b; --danger: #c0392b; --ok: #1f8a5b; --soft: #eaf2f4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1a20; --panel: #16252d; --line: #29404b; --ink: #e6eef1; --muted: #93a6ae; --soft: #1d313b; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 "Malgun Gothic", system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0 12px 0 0; }
+  button, select, input, textarea { font: inherit; color: var(--ink); }
+  button { padding: 7px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); cursor: pointer; }
+  button:hover { background: var(--soft); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button.primary:hover { filter: brightness(1.08); }
+  button.danger { color: var(--danger); }
+  .spacer { flex: 1; }
+  main { display: grid; grid-template-columns: 290px 1fr; gap: 16px; padding: 16px 20px 90px; max-width: 1200px; margin: 0 auto; }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .slide-item { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
+  .slide-item:hover { background: var(--soft); }
+  .slide-item.active { background: var(--soft); border-color: var(--accent); }
+  .slide-item .no { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-size: 13px; flex: none; }
+  .slide-item .meta { min-width: 0; }
+  .slide-item .meta b { display: block; font-size: 12px; color: var(--muted); font-weight: 400; }
+  .slide-item .meta span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .toolbar { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+  .toolbar select { flex: 1; min-width: 0; }
+  label.f { display: block; margin: 14px 0 4px; font-weight: 600; }
+  label.f small { font-weight: 400; color: var(--muted); margin-left: 6px; }
+  input[type=text], input[type=number], select, textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+  textarea { resize: vertical; }
+  textarea.mono { font-family: Consolas, "Courier New", monospace; font-size: 13px; }
+  .group { border: 1px dashed var(--line); border-radius: 10px; padding: 10px; margin-bottom: 8px; background: var(--soft); }
+  .group .row { display: flex; justify-content: space-between; align-items: center; }
+  .hint { color: var(--muted); font-size: 13px; margin: 2px 0 0; }
+  #messages { position: fixed; left: 0; right: 0; bottom: 0; background: var(--panel); border-top: 1px solid var(--line); padding: 8px 20px; max-height: 28vh; overflow: auto; font-size: 14px; }
+  #messages .err { color: var(--danger); } #messages .warn { color: var(--warn); } #messages .ok { color: var(--ok); }
+  details { margin-top: 16px; }
+  summary { cursor: pointer; font-weight: 600; }
+  .palette { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 8px; }
+  .palette label { display: flex; align-items: center; gap: 8px; }
+  .palette input[type=color] { width: 34px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>deckgen</h1>
+  <button id="btn-example">예제 불러오기</button>
+  <button id="btn-open">JSON 열기</button>
+  <button id="btn-save">JSON 저장</button>
+  <input id="file" type="file" accept="application/json,.json" hidden>
+  <span class="spacer"></span>
+  <button id="btn-build" class="primary">PPT 만들기</button>
+</header>
+<main>
+  <section class="panel">
+    <div id="slides"></div>
+    <div class="toolbar">
+      <select id="new-layout"></select>
+      <button id="btn-add">추가</button>
+    </div>
+    <div class="toolbar">
+      <button id="btn-dup">복제</button>
+      <button id="btn-up">위로</button>
+      <button id="btn-down">아래로</button>
+      <button id="btn-del" class="danger">삭제</button>
+    </div>
+  </section>
+  <section>
+    <div class="panel" id="editor"></div>
+    <details class="panel">
+      <summary>색과 글꼴</summary>
+      <div id="theme"></div>
+    </details>
+    <details class="panel">
+      <summary>JSON 직접 편집</summary>
+      <textarea id="json" class="mono" rows="14" spellcheck="false"></textarea>
+      <div class="toolbar"><button id="btn-apply">JSON 적용</button></div>
+    </details>
+  </section>
+</main>
+<div id="messages"></div>
+<script>
+const $ = (selector) => document.querySelector(selector);
+const make = (tag, props = {}, ...children) => {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+};
+
+let meta = null;
+let deck = { slides: [] };
+let current = 0;
+let checkTimer = null;
+
+const layoutOf = (name) => meta.layouts.find((item) => item.name === name);
+const slideTitle = (slide) => slide.title || slide.cards?.[0]?.text || slide.items?.[0] || '';
+
+async function init() {
+  meta = await (await fetch('/api/meta')).json();
+  $('#new-layout').append(...meta.layouts.map((item) => make('option', { value: item.name, textContent: `${item.name}  ${item.summary}` })));
+  deck = structuredClone(meta.example_deck);
+  render();
+}
+
+function render() {
+  current = Math.min(current, deck.slides.length - 1);
+  renderSlides();
+  renderEditor();
+  renderTheme();
+  $('#json').value = JSON.stringify(deck, null, 2);
+  scheduleCheck();
+}
+
+function renderSlides() {
+  const box = $('#slides');
+  box.replaceChildren(...deck.slides.map((slide, index) => {
+    const item = make('div', { className: 'slide-item' + (index === current ? ' active' : '') },
+      make('span', { className: 'no', textContent: index + 1 }),
+      make('div', { className: 'meta' }, make('b', { textContent: slide.layout }), make('span', { textContent: slideTitle(slide) || '(제목 없음)' })));
+    item.onclick = () => { current = index; render(); };
+    return item;
+  }));
+}
+
+function blankItem(field) {
+  const item = {};
+  field.item_fields.forEach((sub) => {
+    if (sub.type === 'choice') item[sub.name] = sub.default;
+    else if (sub.required) item[sub.name] = sub.type === 'list' ? [] : '';
+  });
+  return item;
+}
+
+function setValue(data, field, value) {
+  const empty = value === '' || (Array.isArray(value) && value.length === 0);
+  if (empty && !field.required) delete data[field.name];
+  else data[field.name] = value;
+  scheduleCheck();
+  $('#json').value = JSON.stringify(deck, null, 2);
+}
+
+function fieldControl(field, data, rerender) {
+  const value = data[field.name];
+  const bind = {
+    text: () => {
+      const input = make('input', { type: 'text', value: value ?? '' });
+      input.oninput = () => { setValue(data, field, input.value); renderSlidesSoft(); };
+      return input;
+    },
+    list: () => {
+      const area = make('textarea', { rows: Math.min(10, Math.max(3, (value ?? []).length + 1)), value: (value ?? []).join('\n') });
+      if (field.name === 'code') area.className = 'mono';
+      area.oninput = () => setValue(data, field, area.value.split('\n').filter((line) => line.trim() !== ''));
+      return area;
+    },
+    choice: () => {
+      const select = make('select', {}, ...field.choices.map((choice) => make('option', { value: choice, textContent: choice, selected: (value ?? field.default) === choice })));
+      select.onchange = () => setValue(data, field, select.value);
+      return select;
+    },
+    bool: () => {
+      const box = make('input', { type: 'checkbox', checked: Boolean(value ?? field.default) });
+      box.onchange = () => setValue(data, field, box.checked);
+      return box;
+    },
+    int: () => {
+      const input = make('input', { type: 'number', min: field.minimum, max: field.maximum, value: value ?? field.default });
+      input.oninput = () => setValue(data, field, Number(input.value));
+      return input;
+    },
+    objects: () => {
+      const wrap = make('div');
+      (value ?? []).forEach((item, index) => {
+        const group = make('div', { className: 'group' });
+        const remove = make('button', { textContent: '삭제', className: 'danger', type: 'button' });
+        remove.onclick = () => { data[field.name].splice(index, 1); setValue(data, field, data[field.name]); rerender(); };
+        group.append(make('div', { className: 'row' }, make('b', { textContent: `${index + 1}` }), remove));
+        field.item_fields.forEach((sub) => group.append(fieldBlock(sub, item, rerender)));
+        wrap.append(group);
+      });
+      const add = make('button', { textContent: '항목 추가', type: 'button' });
+      add.onclick = () => { data[field.name] = [...(data[field.name] ?? []), blankItem(field)]; setValue(data, field, data[field.name]); rerender(); };
+      wrap.append(add);
+      return wrap;
+    },
+  };
+  const kind = field.type === 'text' && field.multiline ? 'text-area' : field.type;
+  if (kind === 'text-area') {
+    const area = make('textarea', { rows: 3, value: value ?? '' });
+    area.oninput = () => setValue(data, field, area.value);
+    return area;
+  }
+  return bind[kind]();
+}
+
+function fieldBlock(field, data, rerender) {
+  const caption = make('label', { className: 'f', textContent: field.label }, field.required ? '' : make('small', { textContent: '선택' }));
+  const block = make('div', {}, caption, fieldControl(field, data, rerender));
+  if (field.hint) block.append(make('p', { className: 'hint', textContent: field.hint }));
+  return block;
+}
+
+function renderSlidesSoft() {
+  const items = document.querySelectorAll('#slides .slide-item .meta span');
+  if (items[current]) items[current].textContent = slideTitle(deck.slides[current]) || '(제목 없음)';
+}
+
+function renderEditor() {
+  const slide = deck.slides[current];
+  const editor = $('#editor');
+  if (!slide) { editor.replaceChildren(make('p', { textContent: '슬라이드가 없습니다. 오른쪽 위에서 추가하세요.' })); return; }
+  const layout = layoutOf(slide.layout);
+  const select = make('select', {}, ...meta.layouts.map((item) => make('option', { value: item.name, textContent: `${item.name}  ${item.summary}`, selected: item.name === slide.layout })));
+  select.onchange = () => changeLayout(select.value);
+  editor.replaceChildren(make('label', { className: 'f', textContent: '양식' }), select,
+    ...layout.fields.map((field) => fieldBlock(field, slide, renderEditor)));
+}
+
+function changeLayout(name) {
+  const old = deck.slides[current];
+  const next = structuredClone(meta.examples[name]);
+  Object.keys(next).forEach((key) => { if (key !== 'layout' && key in old) next[key] = old[key]; });
+  deck.slides[current] = next;
+  render();
+}
+
+function renderTheme() {
+  const theme = deck.theme ?? {};
+  const palette = { ...meta.default_theme.palette, ...(theme.palette ?? {}) };
+  const font = make('input', { type: 'text', value: theme.font ?? meta.default_theme.font });
+  font.oninput = () => { deck.theme = { ...(deck.theme ?? {}), font: font.value }; scheduleCheck(); };
+  const colors = meta.palette_keys.map((key) => {
+    const input = make('input', { type: 'color', value: '#' + palette[key] });
+    input.oninput = () => { deck.theme = { ...(deck.theme ?? {}), palette: { ...(deck.theme?.palette ?? {}), [key]: input.value.slice(1).toUpperCase() } }; scheduleCheck(); };
+    return make('label', {}, input, key);
+  });
+  $('#theme').replaceChildren(make('label', { className: 'f', textContent: '글꼴' }), font, make('div', { className: 'palette' }, ...colors));
+}
+
+function scheduleCheck() {
+  clearTimeout(checkTimer);
+  checkTimer = setTimeout(runCheck, 350);
+}
+
+function showMessages(errors, warnings) {
+  const lines = [
+    ...errors.map((text) => make('div', { className: 'err', textContent: `오류  ${text}` })),
+    ...warnings.map((item) => make('div', { className: 'warn', textContent: `경고  ${item.slide}번 슬라이드(${item.layout}): ${item.message}` })),
+  ];
+  $('#messages').replaceChildren(...(lines.length ? lines : [make('div', { className: 'ok', textContent: '문제가 없습니다' })]));
+}
+
+async function runCheck() {
+  const response = await fetch('/api/check', { method: 'POST', body: JSON.stringify(deck) });
+  const result = await response.json();
+  showMessages(result.errors, result.warnings);
+}
+
+async function buildDeck() {
+  const response = await fetch('/api/build', { method: 'POST', body: JSON.stringify(deck) });
+  if (!response.ok) { showMessages((await response.json()).errors, []); return; }
+  download(await response.blob(), 'deck.pptx');
+}
+
+function download(blob, name) {
+  const link = make('a', { href: URL.createObjectURL(blob), download: name });
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+$('#btn-add').onclick = () => { deck.slides.splice(current + 1, 0, structuredClone(meta.examples[$('#new-layout').value])); current += deck.slides.length > 1 ? 1 : 0; render(); };
+$('#btn-dup').onclick = () => { deck.slides.splice(current + 1, 0, structuredClone(deck.slides[current])); current += 1; render(); };
+$('#btn-del').onclick = () => { deck.slides.splice(current, 1); render(); };
+$('#btn-up').onclick = () => { if (current > 0) { [deck.slides[current - 1], deck.slides[current]] = [deck.slides[current], deck.slides[current - 1]]; current -= 1; render(); } };
+$('#btn-down').onclick = () => { if (current < deck.slides.length - 1) { [deck.slides[current + 1], deck.slides[current]] = [deck.slides[current], deck.slides[current + 1]]; current += 1; render(); } };
+$('#btn-example').onclick = () => { deck = structuredClone(meta.example_deck); current = 0; render(); };
+$('#btn-build').onclick = buildDeck;
+$('#btn-save').onclick = () => download(new Blob([JSON.stringify(deck, null, 2)], { type: 'application/json' }), 'deck.json');
+$('#btn-open').onclick = () => $('#file').click();
+$('#file').onchange = async () => { deck = JSON.parse(await $('#file').files[0].text()); current = 0; render(); };
+$('#btn-apply').onclick = () => {
+  try { deck = JSON.parse($('#json').value); current = 0; render(); }
+  catch (error) { showMessages([`JSON 해석 실패: ${error.message}`], []); }
+};
+
+init();
+</script>
+</body>
+</html>
