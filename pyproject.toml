@@ -7,6 +7,7 @@ name = "deckgen"
 version = "0.1.0"
 description = "양식을 고르고 값만 채워 PPT 를 만드는 CLI/웹 도구"
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.12"
 dependencies = ["python-pptx>=1.0"]
 
