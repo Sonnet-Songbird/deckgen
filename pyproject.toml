@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deckgen"
+version = "0.1.0"
+description = "양식을 고르고 값만 채워 PPT 를 만드는 CLI/웹 도구"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["python-pptx>=1.0"]
+
+[project.scripts]
+deckgen = "deckgen.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["deckgen*"]
+
+[tool.setuptools.package-data]
+deckgen = ["web/*.html"]
